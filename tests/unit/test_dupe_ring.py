@@ -79,6 +79,9 @@ def test_bare_token_shaped_text_retains_distinct_key_while_pasted_ref_is_cut() -
     assert limit.normalize_text("&ref=422-deadbeef-abcd hello") == "hello"
     assert limit.normalize_text("hello &ref=422-deadbeef-abcd") == "hello"
     assert limit.normalize_text("hello&ref=422-deadbeef-abcd world") == "hello world"
+    assert limit.normalize_text("prefix&ref=422-deadbeef-abcd") == "prefix"
+    assert limit.normalize_text("incident &ref=422-deadbeef-abcd. next") == "incident . next"
+    assert limit.normalize_text("incident &ref=422-deadbeef-abcd&other=1") == "incident &other=1"
 
     # Uppercase handling (casefold runs first)
     assert limit.normalize_text("&REF=422-DEADBEEF-ABCD") == ""
@@ -104,6 +107,32 @@ def test_bare_token_shaped_text_retains_distinct_key_while_pasted_ref_is_cut() -
         limit.normalize_text("incident &ref=422-deadbeef00000000-abcd alpha")
         == "incident &ref=422-deadbeef00000000-abcd alpha"
     )
+    # Extended token shapes (e.g. 5th hex digit) or non-token boundaries are not stripped
+    assert (
+        limit.normalize_text("incident &ref=422-deadbeef-abcde alpha")
+        == "incident &ref=422-deadbeef-abcde alpha"
+    )
+    assert (
+        limit.normalize_text("incident &ref=422-deadbeef-abcd9 alpha")
+        == "incident &ref=422-deadbeef-abcd9 alpha"
+    )
+    assert (
+        limit.normalize_text("incident &ref=422-deadbeef-abcdz alpha")
+        == "incident &ref=422-deadbeef-abcdz alpha"
+    )
+    assert (
+        limit.normalize_text("incident &ref=422-deadbeef-abcd_extra alpha")
+        == "incident &ref=422-deadbeef-abcd_extra alpha"
+    )
+    assert (
+        limit.normalize_text("incident &ref=422-deadbeef-abcd-extra alpha")
+        == "incident &ref=422-deadbeef-abcd-extra alpha"
+    )
+    # Unicode digits or word continuations that _REF rejects are not stripped
+    assert (
+        limit.normalize_text("incident &ref=422-deadbeef-٠١٢٣ alpha")
+        == "incident &ref=422-deadbeef-٠١٢٣ alpha"
+    )
 
     # In dupe_refused: filling the threshold with phrase does not reject
     # the distinct legitimate message phrase_bare
@@ -111,8 +140,12 @@ def test_bare_token_shaped_text_retains_distinct_key_while_pasted_ref_is_cut() -
     assert refused(phrase, now=0.0, max_copies=1) is False
     assert refused(phrase, now=1.0, max_copies=1) is True
     assert refused(phrase_bare, now=2.0, max_copies=1) is False
+    # Extended token values remain distinct and are not falsely refused:
+    assert refused(phrase + " &ref=422-deadbeef-abcde", now=3.0, max_copies=1) is False
+    assert refused(phrase + " &ref=422-deadbeef-abcd9", now=4.0, max_copies=1) is False
+    assert refused(phrase + " &ref=422-deadbeef-abcd-extra", now=5.0, max_copies=1) is False
     # But pasting documented &ref= into the duplicate message is rejected
-    assert refused(phrase + " &ref=422-deadbeef-abcd", now=3.0, max_copies=1) is True
+    assert refused(phrase + " &ref=422-deadbeef-abcd", now=6.0, max_copies=1) is True
     limit._dupes.clear()
 
 

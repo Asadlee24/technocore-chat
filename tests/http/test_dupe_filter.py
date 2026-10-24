@@ -153,6 +153,8 @@ def test_the_ref_token_is_handed_out_seen_again_and_never_a_way_past_the_filter(
         assert _say(client, "lobby", "c", PHRASE + " &ref=" + ref + "e").status_code == 200
         assert _say(client, "lobby", "c", PHRASE + " &ref=" + ref + "9").status_code == 200
         assert _say(client, "lobby", "c", PHRASE + " &ref=" + ref + "-extra").status_code == 200
+        # An underscore continues the identifier; stripping its prefix would lose caller text.
+        assert _say(client, "lobby", "c", PHRASE + " &ref=" + ref + "_extra").status_code == 200
 
 
 def test_the_threshold_itself_is_the_knob(client) -> None:

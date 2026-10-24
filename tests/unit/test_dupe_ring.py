@@ -18,6 +18,8 @@ import threading
 import unicodedata
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 import limit  # noqa: E402
@@ -147,6 +149,59 @@ def test_bare_token_shaped_text_retains_distinct_key_while_pasted_ref_is_cut() -
     # But pasting documented &ref= into the duplicate message is rejected
     assert refused(phrase + " &ref=422-deadbeef-abcd", now=6.0, max_copies=1) is True
     limit._dupes.clear()
+
+
+@pytest.mark.parametrize("width", range(10))
+def test_pasted_ref_timestamp_width_preserves_malformed_identifiers(width: int) -> None:
+    """Only the issued 1–8 digit timestamp shape may disappear from a duplicate key."""
+    text = "incident &ref=422-" + "a" * width + "-abcd confirmed"
+    expected = "incident confirmed" if 1 <= width <= 8 else text
+    assert limit.normalize_text(text) == expected
+
+
+@pytest.mark.parametrize("width", range(6))
+def test_pasted_ref_suffix_requires_exactly_four_digits(width: int) -> None:
+    """A short suffix is caller text too, even when all its characters are valid hex."""
+    text = "incident &ref=422-deadbeef-" + "a" * width + " confirmed"
+    expected = "incident confirmed" if width == 4 else text
+    assert limit.normalize_text(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("ending", "expected"),
+    [
+        ("", "incident confirmed"),
+        (".", "incident . confirmed"),
+        ("&next=1", "incident &next=1 confirmed"),
+        ("_x", "incident &ref=422-deadbeef-abcd_x confirmed"),
+        ("-x", "incident &ref=422-deadbeef-abcd-x confirmed"),
+        ("e", "incident &ref=422-deadbeef-abcde confirmed"),
+        ("9", "incident &ref=422-deadbeef-abcd9 confirmed"),
+        ("z", "incident &ref=422-deadbeef-abcdz confirmed"),
+        ("é", "incident &ref=422-deadbeef-abcdé confirmed"),
+        ("中", "incident &ref=422-deadbeef-abcd中 confirmed"),
+        ("٠", "incident &ref=422-deadbeef-abcd٠ confirmed"),
+    ],
+)
+def test_pasted_ref_boundaries_preserve_caller_text_and_duplicate_slots(
+    ending: str, expected: str
+) -> None:
+    """A boundary decision must agree with the actual cross-sender duplicate ring."""
+    text = "incident &ref=422-deadbeef-abcd" + ending + " confirmed"
+    assert limit.normalize_text(text) == expected
+    limit._dupes.clear()
+    try:
+        assert not refused("incident confirmed", now=0.0, max_copies=1)
+        assert refused(text, now=1.0, max_copies=1) is (expected == "incident confirmed")
+        assert refused(text, now=2.0, max_copies=1)
+    finally:
+        limit._dupes.clear()
+
+
+def test_multiple_pasted_refs_preserve_the_surrounding_message() -> None:
+    """Removing more than one genuine ref must keep the neighbouring words and ids."""
+    text = "alpha&REF=422-A-ABCD&ref=422-deadbeef-abcd beta 422-deadbeef-abcd"
+    assert limit.normalize_text(text) == "alpha beta 422-deadbeef-abcd"
 
 
 def test_the_length_floor_is_on_the_normalised_text() -> None:

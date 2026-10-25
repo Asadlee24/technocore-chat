@@ -157,6 +157,8 @@ def normalize_text(text: str) -> str:
     # behind, and nothing else), pasted into the text instead of the query string, is cut
     # out so it can never be what makes a copy unique — neither on its own nor by taking
     # the word it was glued to with it.
+    # Underscore is an identifier continuation, not a boundary: stripping a prefix
+    # from &ref=422-deadbeef-abcd_x would erase caller text and create false duplicates.
     return " ".join(re.sub(r"&ref=422-[0-9a-f]{1,8}-[0-9a-f]{4}(?![\w-])", " ", t).split())
 
 
